@@ -9,6 +9,7 @@
         body { font-family: Arial, sans-serif; background: #f4f4f9; padding: 15px; text-align: center; margin: 0; }
         #app-container { max-width: 500px; margin: 0 auto; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         #map { width: 100%; height: 220px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #ccc; }
+        .optie-box { text-align: left; background: #f9f9f9; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 14px; }
         button { background-color: #28a745; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; }
         button.stop { background-color: #dc3545; }
         #log { margin-top: 15px; text-align: left; background: #eee; padding: 10px; border-radius: 6px; height: 120px; overflow-y: auto; font-size: 12px; }
@@ -21,8 +22,17 @@
     <div id="app-container">
         <h2>Live GPS Tracker</h2>
         <div id="map"></div>
+        
+        <!-- Keuzeoptie voor zwart scherm -->
+        <div class="optie-box">
+            <label>
+                <input type="checkbox" id="gebruik-zwart-scherm" checked> 
+                Start met zwart scherm (batterij besparen)
+            </label>
+        </div>
+
         <p id="status-tekst" style="font-size: 13px;">Klaar om te starten</p>
-        <button id="main-btn" onclick="toggleTracking()">Start Rit & Zwart Scherm</button>
+        <button id="main-btn" onclick="toggleTracking()">Start Rit</button>
         <div id="log">Nog niet gestart...</div>
     </div>
 
@@ -42,7 +52,7 @@
     let ritStartTijd = "", ritStartAdres = "", laatsteAdres = "";
     let lastLiveSend = 0;
 
-    // Jouw ingevoerde Google Apps Script URL
+    // Jouw Google Apps Script URL
     const googleScriptUrl = "https://script.google.com/macros/s/AKfycbz6Zd0ChMLyO-qp6pRZx86yuGNlgzTHcNr6cMo_B9L8M_C7l0FbNw43PQSz1tK9gl_rAg/exec";
 
     window.onload = function() {
@@ -71,7 +81,15 @@
             if ("geolocation" in navigator) {
                 watchId = navigator.geolocation.watchPosition(successPosition, errorPosition, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
             }
-            document.getElementById('black-screen').style.display = 'flex';
+
+            // Controleer of de vink voor zwart scherm aan staat
+            const kiesZwartScherm = document.getElementById('gebruik-zwart-scherm').checked;
+            if (kiesZwartScherm) {
+                document.getElementById('black-screen').style.display = 'flex';
+            } else {
+                document.getElementById('black-screen').style.display = 'none';
+            }
+
             logMessage("🚗 Rit gestart & live sync actief.");
         } else {
             stopTracking();
@@ -92,7 +110,6 @@
             polyline.setLatLngs(routeCoordinates);
         }
 
-        // Standaard terugval naar coördinaten zodat er nooit "Onbekend" ontstaat
         let adres = `GPS Locatie (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
         try {
             const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
@@ -110,7 +127,6 @@
 
         laatsteAdres = adres;
 
-        // Stuur elke 10 seconden de live locatie naar Google
         const now = new Date().getTime();
         if (now - lastLiveSend > 10000 && googleScriptUrl) {
             lastLiveSend = now;
@@ -130,10 +146,13 @@
     function stopTracking() {
         isTracking = false;
         if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
-        if (wakeLock !== null) { wakeLock.release(); wakeLock = null; }
+        if (wakeLock !== null) {
+            wakeLock.release();
+            wakeLock = null;
+        }
         
         document.getElementById('black-screen').style.display = 'none';
-        document.getElementById('main-btn').innerText = "Start Rit & Zwart Scherm";
+        document.getElementById('main-btn').innerText = "Start Rit";
         document.getElementById('main-btn').className = "";
         
         logMessage(`🏁 Rit gestopt.`);
