@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Tracker, Waken & Camera</title>
+    <title>GPS Tracker, Waken & Drive Foto's</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     <style>
         body { font-family: Arial, sans-serif; background: #f4f4f9; padding: 15px; text-align: center; margin: 0; }
@@ -16,13 +16,13 @@
         button.stop { background-color: #dc3545; }
         #log { margin-top: 15px; text-align: left; background: #eee; padding: 10px; border-radius: 6px; height: 100px; overflow-y: auto; font-size: 12px; }
         #black-screen { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: black; color: #555; z-index: 9999; flex-direction: column; justify-content: center; align-items: center; }
-        #camera-preview { display: none; } /* Verborgen webcam-element voor foto's */
+        #camera-preview { display: none; }
     </style>
 </head>
 <body>
 
     <div id="app-container">
-        <h2>GPS Tracker & Waken</h2>
+        <h2>GPS Tracker & Drive</h2>
         <div id="map"></div>
         
         <div class="optie-box">
@@ -35,9 +35,9 @@
                     <option value="1800000" selected>30 minuten (Half uur)</option>
                 </select>
             </label><br><br>
-            <label>Camera voor foto's: 
+            <label>Camera voor Drive: 
                 <select id="camera-keuze">
-                    <option value="user">Voorste camera (Selfie)</option>
+                    <option value="user">Voorste camera</option>
                     <option value="environment" selected>Achterste camera</option>
                 </select>
             </label>
@@ -55,7 +55,6 @@
         <div id="log">Nog niet gestart...</div>
     </div>
 
-    <!-- Verborgen video element om foto's te maken via HTML5 -->
     <video id="camera-preview" autoplay playsinline></video>
 
     <div id="black-screen" onclick="checkUnlock()">
@@ -66,7 +65,7 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
 <script>
-    let mode = null; // 'rit' of 'waken'
+    let mode = null;
     let watchId = null;
     let wakeLock = null;
     let tapCount = 0;
@@ -92,10 +91,9 @@
         ritStartTijdObj = new Date();
         ritStartTijdStr = ritStartTijdObj.toLocaleTimeString();
         ritStartAdres = "Adres wordt bepaald...";
-        
         uiActief(true);
         aanheffenBeveiliging();
-        logMessage("🚗 Rit gestart met automatische updates.");
+        logMessage("🚗 Rit gestart.");
     }
 
     async function startWaken() {
@@ -103,19 +101,16 @@
         ritStartTijdObj = new Date();
         ritStartTijdStr = ritStartTijdObj.toLocaleTimeString();
         ritStartAdres = "Adres wordt bepaald...";
-        
         uiActief(true);
         aanheffenBeveiliging();
-        logMessage("🛡️ Waken / Standby-modus geactiveerd.");
+        logMessage("🛡️ Waken actief.");
     }
 
     async function aanheffenBeveiliging() {
         try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
-
         if ("geolocation" in navigator) {
             watchId = navigator.geolocation.watchPosition(successPosition, errorPosition, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
         }
-
         if (document.getElementById('gebruik-zwart-scherm').checked) {
             document.getElementById('black-screen').style.display = 'flex';
         }
@@ -125,7 +120,7 @@
         document.getElementById('main-btn').style.display = bezig ? 'none' : 'block';
         document.getElementById('waken-btn').style.display = bezig ? 'none' : 'block';
         document.getElementById('stop-btn').style.display = bezig ? 'block' : 'none';
-        document.getElementById('status-tekst').innerText = mode === 'rit' ? "Rit is bezig..." : "Waken is actief...";
+        document.getElementById('status-tekst').innerText = mode === 'rit' ? "Rit bezig..." : "Waken actief...";
     }
 
     async function neemFotoEnVerstuur(lat, lon, adres) {
@@ -135,22 +130,20 @@
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facingMode } });
             const video = document.getElementById('camera-preview');
             video.srcObject = stream;
-            await new Promise(resolve => setTimeout(resolve, 800)); // Even wachten op belichting
+            await new Promise(resolve => setTimeout(resolve, 800));
 
             const canvas = document.createElement('canvas');
-            canvas.width = 400; // Klein gehouden voor snelle verzending
-            canvas.height = 300;
+            canvas.width = 640;
+            canvas.height = 480;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            fotoData = canvas.toDataURL('image/jpeg', 0.6); // Gecomprimeerde jpeg
+            fotoData = canvas.toDataURL('image/jpeg', 0.7);
 
-            // Stop camera streams direct
             stream.getTracks().forEach(track => track.stop());
         } catch (e) {
-            console.log("Camera niet beschikbaar of geweigerd:", e);
+            console.log("Geen camera toegang:", e);
         }
 
-        // Versturen naar Google Sheets
         if (googleScriptUrl) {
             fetch(googleScriptUrl, {
                 method: 'POST',
@@ -166,7 +159,7 @@
                 })
             }).catch(err => console.log(err));
 
-            logMessage("📸 Update met foto verzonden.");
+            logMessage("📸 Foto naar Drive gestuurd.");
         }
     }
 
@@ -199,7 +192,6 @@
         const gekozenInterval = parseInt(document.getElementById('update-interval').value);
         const now = new Date().getTime();
         
-        // Als het interval verstreken is, sturen we de update inclusief een nieuwe foto!
         if (now - lastLiveSend > gekozenInterval) {
             lastLiveSend = now;
             await neemFotoEnVerstuur(lat, lon, laatsteAdres);
@@ -251,7 +243,7 @@
     function checkUnlock() {
         tapCount++;
         setTimeout(() => { tapCount = 0; }, 1000);
-        if (tapCount >= 3 && confirm("Actie stoppen?")) stopTracking();
+        if (tapCount >= 3 && confirm("Stoppen?")) stopTracking();
     }
 </script>
 </body>
