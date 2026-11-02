@@ -92,8 +92,8 @@
             polyline.setLatLngs(routeCoordinates);
         }
 
-        // Standaard terugval naar coördinaten als adres ophalen mislukt
-        let adres = `Coördinaten: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+        // Standaard terugval naar coördinaten zodat er nooit "Onbekend" ontstaat
+        let adres = `GPS Locatie (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
         try {
             const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
             const data = await res.json();
@@ -101,10 +101,10 @@
                 adres = data.display_name;
             }
         } catch (e) { 
-            console.log("Kon adres niet laden, gebruik coördinaten"); 
+            console.log("Nominatim overgeslagen, coördinaten worden gebruikt."); 
         }
 
-        if (ritStartAdres === "Adres wordt bepaald..." || ritStartAdres.startsWith("Coördinaten")) {
+        if (ritStartAdres === "Adres wordt bepaald..." || ritStartAdres.includes("GPS Locatie")) {
             ritStartAdres = adres;
         }
 
