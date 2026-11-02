@@ -81,8 +81,8 @@
     let wakeLock = null;
     let tapCount = 0;
     
-    // VERVANG DIT STRAKS MET JOUW GOOGLE SHEETS WEB APP URL (als je dat wilt)
-    const googleScriptUrl = ""; 
+    // Jouw ingevoerde Google Apps Script URL
+    const googleScriptUrl = "https://script.google.com/macros/s/AKfycbz6Zd0ChMLyO-qp6pRZx86yuGNlgzTHcNr6cMo_B9L8M_C7l0FbNw43PQSz1tK9gl_rAg/exec"; 
 
     async function startTracking() {
         try {
@@ -127,7 +127,7 @@
 
         logMessage(`[${tijdstip}] <br>📍 <b>${adres}</b>`);
 
-        // Optioneel: Stuur door naar Google Spreadsheet als URL is ingevuld
+        // Stuur door naar Google Spreadsheet
         if (googleScriptUrl) {
             fetch(googleScriptUrl, {
                 method: 'POST',
