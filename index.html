@@ -3,33 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Tracker + Camera (Zender)</title>
+    <title>GPS Tracker (Zender)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     <style>
         body { font-family: Arial, sans-serif; background: #f4f4f9; padding: 15px; text-align: center; margin: 0; }
         #app-container { max-width: 500px; margin: 0 auto; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        #map { width: 100%; height: 200px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #ccc; }
-        video, canvas { display: none; }
+        #map { width: 100%; height: 220px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #ccc; }
         button { background-color: #28a745; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; }
         button.stop { background-color: #dc3545; }
-        #log { margin-top: 15px; text-align: left; background: #eee; padding: 10px; border-radius: 6px; height: 100px; overflow-y: auto; font-size: 12px; }
+        #log { margin-top: 15px; text-align: left; background: #eee; padding: 10px; border-radius: 6px; height: 120px; overflow-y: auto; font-size: 12px; }
         #black-screen { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: black; color: #555; z-index: 9999; flex-direction: column; justify-content: center; align-items: center; }
-        #black-screen h2 { color: #222; font-size: 16px; }
     </style>
 </head>
 <body>
 
     <div id="app-container">
-        <h2>Live Tracker + Foto</h2>
+        <h2>Live GPS Tracker</h2>
         <div id="map"></div>
         <p id="status-tekst" style="font-size: 13px;">Klaar om te starten</p>
         <button id="main-btn" onclick="toggleTracking()">Start Rit & Zwart Scherm</button>
         <div id="log">Nog niet gestart...</div>
     </div>
-
-    <!-- Verborgen camera elementen -->
-    <video id="video" autoplay playsinline></video>
-    <canvas id="canvas" width="320" height="240"></canvas>
 
     <div id="black-screen" onclick="checkUnlock()">
         <h2>Rit is gaande op achtergrond...</h2>
@@ -51,17 +45,11 @@
 
     window.onload = function() {
         map = L.map('map').setView([52.3676, 4.9041], 13);
-        // Veilige kaartlaag om 403 blokkades te voorkomen
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
             maxZoom: 19,
-            attribution: '© OpenStreetMap contributors & CARTO'
+            attribution: 'Tiles &copy; Esri'
         }).addTo(map);
-        
         polyline = L.polyline([], {color: 'red', weight: 4}).addTo(map);
-        
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-            .then(stream => { document.getElementById('video').srcObject = stream; })
-            .catch(err => console.log("Camera geen toegang:", err));
     };
 
     async function toggleTracking() {
@@ -82,7 +70,7 @@
                 watchId = navigator.geolocation.watchPosition(successPosition, errorPosition, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
             }
             document.getElementById('black-screen').style.display = 'flex';
-            logMessage("🚗 Rit gestart & foto-sync actief.");
+            logMessage("🚗 Rit gestart & live sync actief.");
         } else {
             stopTracking();
         }
@@ -111,27 +99,18 @@
             }
         } catch (e) { laatsteAdres = "Onbekend"; }
 
+        // Stuur elke 10 seconden de live locatie naar Google
         const now = new Date().getTime();
-        if (now - lastLiveSend > 30000 && googleScriptUrl) {
+        if (now - lastLiveSend > 10000 && googleScriptUrl) {
             lastLiveSend = now;
-            
-            let fotoData = "";
-            try {
-                const video = document.getElementById('video');
-                const canvas = document.getElementById('canvas');
-                const context = canvas.getContext('2d');
-                context.drawImage(video, 0, 0, 320, 240);
-                fotoData = canvas.toDataURL('image/jpeg', 0.5);
-            } catch (e) { console.log("Foto maken mislukt", e); }
-
             fetch(googleScriptUrl, {
                 method: 'POST',
                 mode: 'no-cors',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: "live", tijd: new Date().toLocaleTimeString(), lat: lat, lon: lon, adres: laatsteAdres, foto: fotoData })
+                body: JSON.stringify({ type: "live", tijd: new Date().toLocaleTimeString(), lat: lat, lon: lon, adres: laatsteAdres })
             }).catch(err => console.log(err));
             
-            logMessage("📸 Locatie & foto verzonden.");
+            logMessage("📍 Live locatie verzonden.");
         }
     }
 
@@ -146,17 +125,7 @@
         document.getElementById('main-btn').innerText = "Start Rit & Zwart Scherm";
         document.getElementById('main-btn').className = "";
         
-        const ritEindTijd = new Date().toLocaleString();
-        logMessage(`🏁 Rit beëindigd!`);
-
-        if (googleScriptUrl) {
-            fetch(googleScriptUrl, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: "rit", startTijd: ritStartTijd, startPlaats: ritStartAdres, eindTijd: ritEindTijd, eindPlaats: laatsteAdres })
-            }).catch(err => console.log(err));
-        }
+        logMessage(`🏁 Rit gestopt.`);
     }
 
     function logMessage(msg) {
