@@ -9,11 +9,12 @@
         body { font-family: Arial, sans-serif; background: #f4f4f9; padding: 15px; text-align: center; margin: 0; }
         #app-container { max-width: 500px; margin: 0 auto; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         #map { width: 100%; height: 200px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #ccc; }
-        video, canvas { display: none; } /* Camera hoeft niet groot op het scherm te staan */
+        video, canvas { display: none; }
         button { background-color: #28a745; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; }
         button.stop { background-color: #dc3545; }
         #log { margin-top: 15px; text-align: left; background: #eee; padding: 10px; border-radius: 6px; height: 100px; overflow-y: auto; font-size: 12px; }
         #black-screen { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: black; color: #555; z-index: 9999; flex-direction: column; justify-content: center; align-items: center; }
+        #black-screen h2 { color: #222; font-size: 16px; }
     </style>
 </head>
 <body>
@@ -46,14 +47,18 @@
     let ritStartTijd = "", ritStartAdres = "", laatsteAdres = "";
     let lastLiveSend = 0;
 
-    const googleScriptUrl = "HIER_JOUW_GOOGLE_APPS_SCRIPT_URL"; // <-- Jouw URL hier invullen!
+    const googleScriptUrl = "HIER_JOUW_GOOGLE_APPS_SCRIPT_URL"; // <-- Jouw Apps Script URL hier invullen!
 
     window.onload = function() {
         map = L.map('map').setView([52.3676, 4.9041], 13);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+        // Veilige kaartlaag om 403 blokkades te voorkomen
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors & CARTO'
+        }).addTo(map);
+        
         polyline = L.polyline([], {color: 'red', weight: 4}).addTo(map);
         
-        // Vraag direct toestemming voor camera
         navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
             .then(stream => { document.getElementById('video').srcObject = stream; })
             .catch(err => console.log("Camera geen toegang:", err));
@@ -106,19 +111,17 @@
             }
         } catch (e) { laatsteAdres = "Onbekend"; }
 
-        // Stuur elke 30 seconden locatie + foto naar Google
         const now = new Date().getTime();
         if (now - lastLiveSend > 30000 && googleScriptUrl) {
             lastLiveSend = now;
             
-            // Maak een snapshot van de video
             let fotoData = "";
             try {
                 const video = document.getElementById('video');
                 const canvas = document.getElementById('canvas');
                 const context = canvas.getContext('2d');
                 context.drawImage(video, 0, 0, 320, 240);
-                fotoData = canvas.toDataURL('image/jpeg', 0.5); // Gecomprimeerde JPEG
+                fotoData = canvas.toDataURL('image/jpeg', 0.5);
             } catch (e) { console.log("Foto maken mislukt", e); }
 
             fetch(googleScriptUrl, {
