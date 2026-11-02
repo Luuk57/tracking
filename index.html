@@ -3,13 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tracking & Adres Monitor</title>
+    <title>Tracking, Kaart & Adres Monitor</title>
+    
+    <!-- Leaflet CSS voor de kaart -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    
     <style>
         body {
             font-family: Arial, sans-serif;
             background-color: #f4f4f9;
             color: #333;
-            padding: 20px;
+            padding: 15px;
             margin: 0;
             text-align: center;
         }
@@ -17,30 +21,38 @@
             max-width: 500px;
             margin: 0 auto;
             background: white;
-            padding: 20px;
+            padding: 15px;
             border-radius: 12px;
             box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        /* De afmeting van de kaart in het scherm */
+        #map {
+            width: 100%;
+            height: 250px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
         }
         button {
             background-color: #28a745;
             color: white;
             border: none;
-            padding: 15px 25px;
-            font-size: 18px;
+            padding: 12px 20px;
+            font-size: 16px;
             border-radius: 8px;
             cursor: pointer;
             width: 100%;
-            margin-top: 15px;
+            margin-top: 10px;
         }
         #log {
-            margin-top: 20px;
+            margin-top: 15px;
             text-align: left;
             background: #eee;
             padding: 10px;
             border-radius: 6px;
-            height: 220px;
+            height: 150px;
             overflow-y: auto;
-            font-size: 13px;
+            font-size: 12px;
         }
         #black-screen {
             display: none;
@@ -62,19 +74,26 @@
 <body>
 
     <div id="app-container">
-        <h2>GPS Tracker & Adressen</h2>
-        <p>Zet de tracking aan, het scherm wordt zwart.</p>
+        <h2>GPS Tracker & Kaart</h2>
         
+        <!-- Hier verschijnt de live kaart -->
+        <div id="map"></div>
+        
+        <p style="font-size: 13px; margin: 5px 0;">Zet tracking aan, het scherm wordt zwart.</p>
         <button onclick="startTracking()">Start Tracking & Zwart Scherm</button>
         
         <h3>Logboek:</h3>
         <div id="log">Nog niet gestart...</div>
     </div>
 
+    <!-- Pikkedonker scherm om aanraking te voorkomen -->
     <div id="black-screen" onclick="checkUnlock()">
         <h2>App draait op achtergrond...</h2>
         <p style="color: #333; font-size: 12px;">(Tik 3 keer snel hier om te ontgrendelen)</p>
     </div>
+
+    <!-- Leaflet JS voor de kaart logica -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
 <script>
     let watchId = null;
@@ -82,12 +101,28 @@
     let tapCount = 0;
     let lastLogTime = 0;
     
+    let map = null;
+    let marker = null;
+    let polyline = null;
+    let routeCoordinates = [];
+
     // Jouw Google Apps Script URL
     const googleScriptUrl = "https://script.google.com/macros/s/AKfycbz6Zd0ChMLyO-qp6pRZx86yuGNlgzTHcNr6cMo_B9L8M_C7l0FbNw43PQSz1tK9gl_rAg/exec"; 
 
-    // HIER KUN JE DE TIJD AANPASSEN (in milliseconden)
-    // 10000 = 10 seconden | 30000 = 30 seconden | 60000 = 1 minuut
-    const intervalTijdMS = 20000; 
+    // Interval ingesteld op 10 seconden
+    const intervalTijdMS = 10000; 
+
+    // Initialiseer direct een standaard kaart bij openen (bijv. gecentreerd op Nederland)
+    window.onload = function() {
+        map = L.map('map').setView([52.3676, 4.9041], 13); // Start in Amsterdam of jouw eerste GPS fix
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        polyline = L.polyline([], {color: 'red', weight: 4}).addTo(map);
+    };
 
     async function startTracking() {
         try {
@@ -100,7 +135,7 @@
         }
 
         if ("geolocation" in navigator) {
-            logMessage("Start GPS-zoektocht (Interval: " + (intervalTijdMS / 1000) + " sec)...");
+            logMessage("Start GPS-zoektocht met kaart...");
             watchId = navigator.geolocation.watchPosition(successPosition, errorPosition, {
                 enableHighAccuracy: true,
                 maximumAge: 10000,
@@ -114,16 +149,29 @@
     }
 
     async function successPosition(position) {
-        const now = new Date().getTime();
-
-        // Controleer of er genoeg tijd verstreken is sinds de vorige meting
-        if (now - lastLogTime < intervalTijdMS) {
-            return; // Sla deze meting over
-        }
-        lastLogTime = now;
-
         const lat = position.coords.latitude;
         const lon = position.coords.longitude;
+        const latLng = [lat, lon];
+        
+        // Werk de kaart direct bij (ook als de log-tijd nog niet om is, is wel zo fijn voor de kaart)
+        if (map) {
+            if (!marker) {
+                marker = L.marker(latLng).addTo(map).bindPopup("Je bent hier").openPopup();
+            } else {
+                marker.setLatLng(latLng);
+            }
+            map.setView(latLng, 15); // Zoom mee met jouw locatie
+
+            routeCoordinates.push(latLng);
+            polyline.setLatLngs(routeCoordinates);
+        }
+
+        const now = new Date().getTime();
+        // Controleer of er genoeg tijd verstreken is om te loggen naar Google / Logboek
+        if (now - lastLogTime < intervalTijdMS) {
+            return; 
+        }
+        lastLogTime = now;
         const tijdstip = new Date().toLocaleTimeString();
         
         // Vertaal coördinaten naar een leesbaar adres via OpenStreetMap
@@ -138,7 +186,7 @@
             adres = "Kon adres niet laden";
         }
 
-        logMessage(`[${tijdstip}] <br>📍 <b>${adres}</b>`);
+        logMessage(`[${tijdstip}] 📍 <b>${adres}</b>`);
 
         // Stuur door naar Google Spreadsheet
         if (googleScriptUrl) {
@@ -157,7 +205,7 @@
 
     function logMessage(msg) {
         const logDiv = document.getElementById('log');
-        logDiv.innerHTML += msg + "<br><hr>";
+        logDiv.innerHTML += msg + "<br>";
         logDiv.scrollTop = logDiv.scrollHeight;
     }
 
