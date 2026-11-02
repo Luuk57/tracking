@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Volg Scherm</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f4f9; padding: 15px; text-align: center; margin: 0; }
+        #app-container { max-width: 600px; margin: 0 auto; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        #map { width: 100%; height: 350px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #ccc; }
+        #info { background: #eef; padding: 10px; border-radius: 6px; font-size: 13px; text-align: left; }
+    </style>
+</head>
+<body>
+
+    <div id="app-container">
+        <h2>Live Volg Scherm</h2>
+        <div id="map"></div>
+        <div id="info"><b>Laatste update:</b> <span id="tijd">Verbinding maken...</span><br>📍 <span id="adres">Gegevens ophalen...</span></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<script>
+    let map = null, marker = null;
+    const googleScriptUrl = "HIER_JOUW_GOOGLE_APPS_SCRIPT_URL"; // <-- Jouw URL hier!
+
+    window.onload = function() {
+        map = L.map('map').setView([52.3676, 4.9041], 13);
+        
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19,
+            attribution: 'Tiles &copy; Esri'
+        }).addTo(map);
+        
+        haalLiveLocatieOp();
+        setInterval(haalLiveLocatieOp, 10000); // Elke 10 seconden verversen
+    };
+
+    async function haalLiveLocatieOp() {
+        try {
+            const response = await fetch(googleScriptUrl);
+            const data = await response.json();
+            
+            if (data && data.lat && data.lon) {
+                const latLng = [data.lat, data.lon];
+                
+                if (!marker) {
+                    marker = L.marker(latLng).addTo(map).bindPopup("Live locatie").openPopup();
+                } else {
+                    marker.setLatLng(latLng);
+                }
+                map.setView(latLng, 15);
+                
+                document.getElementById('tijd').innerText = data.tijd || "Onbekend";
+                document.getElementById('adres').innerText = data.adres || "Geen adres";
+            }
+        } catch (e) {
+            console.log("Fout:", e);
+            document.getElementById('adres').innerText = "Wachten op data...";
+        }
+    }
+</script>
+</body>
+</html>
