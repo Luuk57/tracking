@@ -82,7 +82,6 @@
                 watchId = navigator.geolocation.watchPosition(successPosition, errorPosition, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
             }
 
-            // Controleer of de vink voor zwart scherm aan staat
             const kiesZwartScherm = document.getElementById('gebruik-zwart-scherm').checked;
             if (kiesZwartScherm) {
                 document.getElementById('black-screen').style.display = 'flex';
@@ -110,15 +109,31 @@
             polyline.setLatLngs(routeCoordinates);
         }
 
+        // Veilige basis op basis van coördinaten
         let adres = `GPS Locatie (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
+
+        // Poging 1: OpenStreetMap (Nominatim)
         try {
             const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
             const data = await res.json();
             if (data && data.display_name) {
                 adres = data.display_name;
             }
-        } catch (e) { 
-            console.log("Nominatim overgeslagen, coördinaten worden gebruikt."); 
+        } catch (e) {
+            console.log("Nominatim mislukt, probeer backup...");
+        }
+
+        // Poging 2: Backup adresdienst als Nominatim faalt
+        if (adres.includes("GPS Locatie")) {
+            try {
+                const res2 = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=nl`);
+                const data2 = await res2.json();
+                if (data2 && data2.locality) {
+                    adres = `${data2.locality}, ${data2.city || data2.principalSubdivision || ''} (GPS)`;
+                }
+            } catch (e2) {
+                console.log("Backup adresdienst ook bezet.");
+            }
         }
 
         if (ritStartAdres === "Adres wordt bepaald..." || ritStartAdres.includes("GPS Locatie")) {
@@ -145,7 +160,10 @@
 
     function stopTracking() {
         isTracking = false;
-        if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+        if (watchId !== null) {
+            navigator.geolocation.clearWatch(watchId);
+            watchId = null;
+        }
         if (wakeLock !== null) {
             wakeLock.release();
             wakeLock = null;
