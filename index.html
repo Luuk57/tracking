@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tracking, Kaart & Adres Monitor</title>
+    <title>Rit Registratie App</title>
     
     <!-- Leaflet CSS voor de kaart -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
@@ -25,7 +25,6 @@
             border-radius: 12px;
             box-shadow: 0 4px 10px rgba(0,0,0,0.1);
         }
-        /* De afmeting van de kaart in het scherm */
         #map {
             width: 100%;
             height: 250px;
@@ -44,13 +43,16 @@
             width: 100%;
             margin-top: 10px;
         }
+        button.stop {
+            background-color: #dc3545;
+        }
         #log {
             margin-top: 15px;
             text-align: left;
             background: #eee;
             padding: 10px;
             border-radius: 6px;
-            height: 150px;
+            height: 140px;
             overflow-y: auto;
             font-size: 12px;
         }
@@ -74,128 +76,123 @@
 <body>
 
     <div id="app-container">
-        <h2>GPS Tracker & Kaart</h2>
+        <h2>Rit Registratie & Kaart</h2>
         
-        <!-- Hier verschijnt de live kaart -->
+        <!-- Live kaart -->
         <div id="map"></div>
         
-        <p style="font-size: 13px; margin: 5px 0;">Zet tracking aan, het scherm wordt zwart.</p>
-        <button onclick="startTracking()">Start Tracking & Zwart Scherm</button>
+        <p id="status-tekst" style="font-size: 13px; margin: 5px 0;">Klaar om te starten</p>
+        
+        <button id="main-btn" onclick="toggleTracking()">Start Rit & Zwart Scherm</button>
         
         <h3>Logboek:</h3>
-        <div id="log">Nog niet gestart...</div>
+        <div id="log">Nog geen rit gestart...</div>
     </div>
 
-    <!-- Pikkedonker scherm om aanraking te voorkomen -->
+    <!-- Pikkedonker scherm -->
     <div id="black-screen" onclick="checkUnlock()">
-        <h2>App draait op achtergrond...</h2>
+        <h2>Rit is gaande op achtergrond...</h2>
         <p style="color: #333; font-size: 12px;">(Tik 3 keer snel hier om te ontgrendelen)</p>
     </div>
 
-    <!-- Leaflet JS voor de kaart logica -->
+    <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
 <script>
+    let isTracking = false;
     let watchId = null;
     let wakeLock = null;
     let tapCount = 0;
-    let lastLogTime = 0;
     
     let map = null;
     let marker = null;
     let polyline = null;
     let routeCoordinates = [];
 
+    // Rit gegevens
+    let ritStartTijd = "";
+    let ritStartAdres = "";
+    let laatsteAdres = "";
+
     // Jouw Google Apps Script URL
     const googleScriptUrl = "https://script.google.com/macros/s/AKfycbz6Zd0ChMLyO-qp6pRZx86yuGNlgzTHcNr6cMo_B9L8M_C7l0FbNw43PQSz1tK9gl_rAg/exec"; 
 
-    // Interval ingesteld op 10 seconden
-    const intervalTijdMS = 10000; 
-
-    // Initialiseer direct een standaard kaart bij openen (bijv. gecentreerd op Nederland)
     window.onload = function() {
-        map = L.map('map').setView([52.3676, 4.9041], 13); // Start in Amsterdam of jouw eerste GPS fix
-        
+        map = L.map('map').setView([52.3676, 4.9041], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             attribution: '© OpenStreetMap'
         }).addTo(map);
-
         polyline = L.polyline([], {color: 'red', weight: 4}).addTo(map);
     };
 
-    async function startTracking() {
-        try {
-            if ('wakeLock' in navigator) {
-                wakeLock = await navigator.wakeLock.request('screen');
-                logMessage("Wake Lock ingeschakeld.");
+    async function toggleTracking() {
+        if (!isTracking) {
+            // --- START RIT ---
+            isTracking = true;
+            routeCoordinates = [];
+            polyline.setLatLngs([]);
+            
+            ritStartTijd = new Date().toLocaleString();
+            ritStartAdres = "Adres wordt bepaald...";
+            
+            document.getElementById('main-btn').innerText = "Stop Rit";
+            document.getElementById('main-btn').className = "stop";
+            document.getElementById('status-tekst').innerText = "Rit gestart om " + ritStartTijd;
+            
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                }
+            } catch (err) { console.log(err); }
+
+            if ("geolocation" in navigator) {
+                watchId = navigator.geolocation.watchPosition(successPosition, errorPosition, {
+                    enableHighAccuracy: true,
+                    maximumAge: 5000,
+                    timeout: 20000
+                });
             }
-        } catch (err) {
-            logMessage("Wake Lock fout: " + err.message);
-        }
-
-        if ("geolocation" in navigator) {
-            logMessage("Start GPS-zoektocht met kaart...");
-            watchId = navigator.geolocation.watchPosition(successPosition, errorPosition, {
-                enableHighAccuracy: true,
-                maximumAge: 10000,
-                timeout: 20000
-            });
+            
+            document.getElementById('black-screen').style.display = 'flex';
+            logMessage("🚗 Rit gestart...");
         } else {
-            alert("Geen GPS beschikbaar.");
+            // --- STOP RIT ---
+            stopTracking();
         }
-
-        document.getElementById('black-screen').style.display = 'flex';
     }
 
     async function successPosition(position) {
+        if (!isTracking) return;
+
         const lat = position.coords.latitude;
         const lon = position.coords.longitude;
         const latLng = [lat, lon];
         
-        // Werk de kaart direct bij (ook als de log-tijd nog niet om is, is wel zo fijn voor de kaart)
         if (map) {
             if (!marker) {
-                marker = L.marker(latLng).addTo(map).bindPopup("Je bent hier").openPopup();
+                marker = L.marker(latLng).addTo(map);
             } else {
                 marker.setLatLng(latLng);
             }
-            map.setView(latLng, 15); // Zoom mee met jouw locatie
-
+            map.setView(latLng, 15);
             routeCoordinates.push(latLng);
             polyline.setLatLngs(routeCoordinates);
         }
 
-        const now = new Date().getTime();
-        // Controleer of er genoeg tijd verstreken is om te loggen naar Google / Logboek
-        if (now - lastLogTime < intervalTijdMS) {
-            return; 
-        }
-        lastLogTime = now;
-        const tijdstip = new Date().toLocaleTimeString();
-        
-        // Vertaal coördinaten naar een leesbaar adres via OpenStreetMap
-        let adres = "Adres aan het ophalen...";
+        // Haal direct adres op
         try {
             const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
             const data = await response.json();
             if (data && data.display_name) {
-                adres = data.display_name;
+                laatsteAdres = data.display_name;
+                if (ritStartAdres === "Adres wordt bepaald...") {
+                    ritStartAdres = laatsteAdres; // Dit is ons startadres
+                    logMessage(`Startadres vastgesteld: ${ritStartAdres}`);
+                }
             }
         } catch (e) {
-            adres = "Kon adres niet laden";
-        }
-
-        logMessage(`[${tijdstip}] 📍 <b>${adres}</b>`);
-
-        // Stuur door naar Google Spreadsheet
-        if (googleScriptUrl) {
-            fetch(googleScriptUrl, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tijd: tijdstip, lat: lat, lon: lon, adres: adres })
-            }).catch(err => console.log("Google sync fout:", err));
+            laatsteAdres = "Onbekend adres";
         }
     }
 
@@ -203,23 +200,9 @@
         logMessage("GPS Fout: " + error.message);
     }
 
-    function logMessage(msg) {
-        const logDiv = document.getElementById('log');
-        logDiv.innerHTML += msg + "<br>";
-        logDiv.scrollTop = logDiv.scrollHeight;
-    }
-
-    function checkUnlock() {
-        tapCount++;
-        setTimeout(() => { tapCount = 0; }, 1000);
-        if (tapCount >= 3) {
-            if (confirm("Wil je de tracking stoppen?")) {
-                stopTracking();
-            }
-        }
-    }
-
-    function stopTracking() {
+    async function stopTracking() {
+        isTracking = false;
+        
         if (watchId !== null) {
             navigator.geolocation.clearWatch(watchId);
             watchId = null;
@@ -228,8 +211,48 @@
             wakeLock.release();
             wakeLock = null;
         }
+        
         document.getElementById('black-screen').style.display = 'none';
-        logMessage("<b>Tracking gestopt.</b>");
+        document.getElementById('main-btn').innerText = "Start Rit & Zwart Scherm";
+        document.getElementById('main-btn').className = "";
+        
+        const ritEindTijd = new Date().toLocaleString();
+        const ritEindAdres = laatsteAdres || "Onbekend eindadres";
+
+        logMessage(`🏁 <b>Rit beëindigd!</b><br>Start: ${ritStartAdres}<br>Eind: ${ritEindAdres}`);
+        document.getElementById('status-tekst').innerText = "Rit opgeslagen!";
+
+        // Stuur de complete ritgegevens naar Google Spreadsheet
+        if (googleScriptUrl) {
+            fetch(googleScriptUrl, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: "rit",
+                    startTijd: ritStartTijd,
+                    startPlaats: ritStartAdres,
+                    eindTijd: ritEindTijd,
+                    eindPlaats: ritEindAdres
+                })
+            }).catch(err => console.log("Google sync fout:", err));
+        }
+    }
+
+    function logMessage(msg) {
+        const logDiv = document.getElementById('log');
+        logDiv.innerHTML += msg + "<br><hr>";
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    function checkUnlock() {
+        tapCount++;
+        setTimeout(() => { tapCount = 0; }, 1000);
+        if (tapCount >= 3) {
+            if (confirm("Wil je de rit stoppen en opslaan?")) {
+                stopTracking();
+            }
+        }
     }
 </script>
 
