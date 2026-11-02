@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Tracker (Zender)</title>
+    <title>GPS Tracker & Ritregistratie</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     <style>
         body { font-family: Arial, sans-serif; background: #f4f4f9; padding: 15px; text-align: center; margin: 0; }
         #app-container { max-width: 500px; margin: 0 auto; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        #map { width: 100%; height: 220px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #ccc; }
-        .optie-box { text-align: left; background: #f9f9f9; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 14px; }
+        #map { width: 100%; height: 200px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #ccc; }
+        .optie-box { text-align: left; background: #f9f9f9; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; }
         button { background-color: #28a745; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 8px; cursor: pointer; width: 100%; margin-top: 10px; }
         button.stop { background-color: #dc3545; }
-        #log { margin-top: 15px; text-align: left; background: #eee; padding: 10px; border-radius: 6px; height: 120px; overflow-y: auto; font-size: 12px; }
+        #log { margin-top: 15px; text-align: left; background: #eee; padding: 10px; border-radius: 6px; height: 110px; overflow-y: auto; font-size: 12px; }
         #black-screen { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: black; color: #555; z-index: 9999; flex-direction: column; justify-content: center; align-items: center; }
         #black-screen h2 { color: #222; font-size: 16px; }
     </style>
@@ -20,14 +20,18 @@
 <body>
 
     <div id="app-container">
-        <h2>Live GPS Tracker</h2>
+        <h2>GPS Tracker & Rit</h2>
         <div id="map"></div>
         
-        <!-- Keuzeoptie voor zwart scherm -->
         <div class="optie-box">
-            <label>
-                <input type="checkbox" id="gebruik-zwart-scherm" checked> 
-                Start met zwart scherm (batterij besparen)
+            <label><input type="checkbox" id="gebruik-zwart-scherm" checked> Start met zwart scherm (batterij besparen)</label><br><br>
+            <label>Verstuur update elke: 
+                <select id="update-interval">
+                    <option value="60000">1 minuut</option>
+                    <option value="300000">5 minuten</option>
+                    <option value="900000">15 minuten</option>
+                    <option value="1800000" selected>30 minuten (Half uur)</option>
+                </select>
             </label>
         </div>
 
@@ -49,10 +53,11 @@
     let wakeLock = null;
     let tapCount = 0;
     let map = null, marker = null, polyline = null, routeCoordinates = [];
-    let ritStartTijd = "", ritStartAdres = "", laatsteAdres = "";
+    
+    let ritStartTijdObj = null;
+    let ritStartTijdStr = "", ritStartAdres = "", laatsteAdres = "";
     let lastLiveSend = 0;
 
-    // Jouw Google Apps Script URL
     const googleScriptUrl = "https://script.google.com/macros/s/AKfycbz6Zd0ChMLyO-qp6pRZx86yuGNlgzTHcNr6cMo_B9L8M_C7l0FbNw43PQSz1tK9gl_rAg/exec";
 
     window.onload = function() {
@@ -69,7 +74,8 @@
             isTracking = true;
             routeCoordinates = [];
             polyline.setLatLngs([]);
-            ritStartTijd = new Date().toLocaleString();
+            ritStartTijdObj = new Date();
+            ritStartTijdStr = ritStartTijdObj.toLocaleTimeString();
             ritStartAdres = "Adres wordt bepaald...";
             
             document.getElementById('main-btn').innerText = "Stop Rit";
@@ -82,14 +88,13 @@
                 watchId = navigator.geolocation.watchPosition(successPosition, errorPosition, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
             }
 
-            const kiesZwartScherm = document.getElementById('gebruik-zwart-scherm').checked;
-            if (kiesZwartScherm) {
+            if (document.getElementById('gebruik-zwart-scherm').checked) {
                 document.getElementById('black-screen').style.display = 'flex';
             } else {
                 document.getElementById('black-screen').style.display = 'none';
             }
 
-            logMessage("🚗 Rit gestart & live sync actief.");
+            logMessage("🚗 Rit gestart.");
         } else {
             stopTracking();
         }
@@ -109,41 +114,23 @@
             polyline.setLatLngs(routeCoordinates);
         }
 
-        // Veilige basis op basis van coördinaten
         let adres = `GPS Locatie (${lat.toFixed(4)}, ${lon.toFixed(4)})`;
-
-        // Poging 1: OpenStreetMap (Nominatim)
         try {
             const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
             const data = await res.json();
-            if (data && data.display_name) {
-                adres = data.display_name;
-            }
-        } catch (e) {
-            console.log("Nominatim mislukt, probeer backup...");
-        }
-
-        // Poging 2: Backup adresdienst als Nominatim faalt
-        if (adres.includes("GPS Locatie")) {
-            try {
-                const res2 = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=nl`);
-                const data2 = await res2.json();
-                if (data2 && data2.locality) {
-                    adres = `${data2.locality}, ${data2.city || data2.principalSubdivision || ''} (GPS)`;
-                }
-            } catch (e2) {
-                console.log("Backup adresdienst ook bezet.");
-            }
-        }
+            if (data && data.display_name) adres = data.display_name;
+        } catch (e) {}
 
         if (ritStartAdres === "Adres wordt bepaald..." || ritStartAdres.includes("GPS Locatie")) {
             ritStartAdres = adres;
         }
-
         laatsteAdres = adres;
 
+        // Pak gekozen interval (bijv. 30 minuten = 1800000 ms)
+        const gekozenInterval = parseInt(document.getElementById('update-interval').value);
         const now = new Date().getTime();
-        if (now - lastLiveSend > 10000 && googleScriptUrl) {
+        
+        if (now - lastLiveSend > gekozenInterval && googleScriptUrl) {
             lastLiveSend = now;
             fetch(googleScriptUrl, {
                 method: 'POST',
@@ -152,7 +139,7 @@
                 body: JSON.stringify({ type: "live", tijd: new Date().toLocaleTimeString(), lat: lat, lon: lon, adres: laatsteAdres })
             }).catch(err => console.log(err));
             
-            logMessage("📍 Live locatie verzonden.");
+            logMessage("📍 Periodieke locatie verzonden.");
         }
     }
 
@@ -160,20 +147,38 @@
 
     function stopTracking() {
         isTracking = false;
-        if (watchId !== null) {
-            navigator.geolocation.clearWatch(watchId);
-            watchId = null;
-        }
-        if (wakeLock !== null) {
-            wakeLock.release();
-            wakeLock = null;
-        }
+        if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+        if (wakeLock !== null) { wakeLock.release(); wakeLock = null; }
         
         document.getElementById('black-screen').style.display = 'none';
         document.getElementById('main-btn').innerText = "Start Rit";
         document.getElementById('main-btn').className = "";
         
-        logMessage(`🏁 Rit gestopt.`);
+        const ritEindTijdObj = new Date();
+        const ritEindTijdStr = ritEindTijdObj.toLocaleTimeString();
+        
+        // Bereken duur in minuten
+        const duurMinuten = Math.round((ritEindTijdObj - ritStartTijdObj) / 60000);
+        const duurTekst = `${duurMinuten} minuten`;
+
+        logMessage(`🏁 Rit gestopt. Duur: ${duurTekst}`);
+
+        // Stuur complete ritgegevens naar Google Sheets (tabblad Ritten)
+        if (googleScriptUrl) {
+            fetch(googleScriptUrl, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: "rit",
+                    startTijd: ritStartTijdStr,
+                    startPlaats: ritStartAdres,
+                    eindTijd: ritEindTijdStr,
+                    eindPlaats: laatsteAdres,
+                    duur: duurTekst
+                })
+            }).catch(err => console.log(err));
+        }
     }
 
     function logMessage(msg) {
