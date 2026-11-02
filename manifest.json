@@ -1,0 +1,15 @@
+{
+  "name": "GPS Tracker & Volg Systeem",
+  "short_name": "GPSTracker",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f4f4f9",
+  "theme_color": "#28a745",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/854/854878.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
