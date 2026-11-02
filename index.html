@@ -13,6 +13,7 @@
         button.stop { background-color: #dc3545; }
         #log { margin-top: 15px; text-align: left; background: #eee; padding: 10px; border-radius: 6px; height: 120px; overflow-y: auto; font-size: 12px; }
         #black-screen { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: black; color: #555; z-index: 9999; flex-direction: column; justify-content: center; align-items: center; }
+        #black-screen h2 { color: #222; font-size: 16px; }
     </style>
 </head>
 <body>
@@ -41,7 +42,8 @@
     let ritStartTijd = "", ritStartAdres = "", laatsteAdres = "";
     let lastLiveSend = 0;
 
-    const googleScriptUrl = "https://script.google.com/macros/s/AKfycbz6Zd0ChMLyO-qp6pRZx86yuGNlgzTHcNr6cMo_B9L8M_C7l0FbNw43PQSz1tK9gl_rAg/exec"; // <-- Jouw Apps Script URL hier invullen!
+    // Jouw ingevoerde Google Apps Script URL
+    const googleScriptUrl = "https://script.google.com/macros/s/AKfycbz6Zd0ChMLyO-qp6pRZx86yuGNlgzTHcNr6cMo_B9L8M_C7l0FbNw43PQSz1tK9gl_rAg/exec";
 
     window.onload = function() {
         map = L.map('map').setView([52.3676, 4.9041], 13);
@@ -90,14 +92,23 @@
             polyline.setLatLngs(routeCoordinates);
         }
 
+        // Standaard terugval naar coördinaten als adres ophalen mislukt
+        let adres = `Coördinaten: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
         try {
             const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
             const data = await res.json();
             if (data && data.display_name) {
-                laatsteAdres = data.display_name;
-                if (ritStartAdres === "Adres wordt bepaald...") ritStartAdres = laatsteAdres;
+                adres = data.display_name;
             }
-        } catch (e) { laatsteAdres = "Onbekend"; }
+        } catch (e) { 
+            console.log("Kon adres niet laden, gebruik coördinaten"); 
+        }
+
+        if (ritStartAdres === "Adres wordt bepaald..." || ritStartAdres.startsWith("Coördinaten")) {
+            ritStartAdres = adres;
+        }
+
+        laatsteAdres = adres;
 
         // Stuur elke 10 seconden de live locatie naar Google
         const now = new Date().getTime();
