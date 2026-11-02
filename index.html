@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Tracker, Waken & Drive Foto's</title>
+    <title>GPS Tracker, Camera & Audio</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     <style>
         body { font-family: Arial, sans-serif; background: #f4f4f9; padding: 15px; text-align: center; margin: 0; }
@@ -22,7 +22,7 @@
 <body>
 
     <div id="app-container">
-        <h2>GPS Tracker & Drive</h2>
+        <h2>GPS Tracker, Foto & Audio</h2>
         <div id="map"></div>
         
         <div class="optie-box">
@@ -35,12 +35,13 @@
                     <option value="1800000" selected>30 minuten (Half uur)</option>
                 </select>
             </label><br><br>
-            <label>Camera voor Drive: 
+            <label>Camera: 
                 <select id="camera-keuze">
                     <option value="user">Voorste camera</option>
                     <option value="environment" selected>Achterste camera</option>
                 </select>
-            </label>
+            </label><br><br>
+            <label><input type="checkbox" id="gebruik-audio" checked> Ook geluidsopname meesturen (10 sec)</label>
         </div>
 
         <p id="status-tekst" style="font-size: 13px;">Klaar om te starten</p>
@@ -73,7 +74,7 @@
     let ritStartTijdObj = null, ritStartTijdStr = "", ritStartAdres = "", laatsteAdres = "";
     let lastLiveSend = 0;
 
-    const googleScriptUrl = "https://script.google.com/macros/s/AKfycbxCEoROhXNgJcNRdP5MUrFOWbIpn-6k4Z3xK9PKF08zQkPM4n3BFY37YJZXetbFKCCnDA/exec";
+    const googleScriptUrl = "https://script.google.com/macros/s/AKfycbzCEoROhXngNrdP5MUrFCWblpn-6k4Z3xK9PKF08zQKPM4n3BFY37YJZxatbFKCCnDA/exec";
 
     window.onload = function() {
         map = L.map('map').setView([52.3676, 4.9041], 13);
@@ -123,7 +124,39 @@
         document.getElementById('status-tekst').innerText = mode === 'rit' ? "Rit bezig..." : "Waken actief...";
     }
 
-    async function neemFotoEnVerstuur(lat, lon, adres) {
+    // Functie om geluid op te nemen via de microfoon
+    async function neemAudioOp() {
+        if (!document.getElementById('gebruik-audio').checked) return "";
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            let chunks = [];
+
+            mediaRecorder.ondataavailable = e => chunks.push(e.data);
+            
+            return new Promise((resolve) => {
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'audio/webm' });
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.readAsDataURL(blob);
+                    // Stop microfoon stream
+                    stream.getTracks().forEach(track => track.stop());
+                };
+
+                mediaRecorder.start();
+                // Neem 10 seconden op
+                setTimeout(() => {
+                    mediaRecorder.stop();
+                }, 10000);
+            });
+        } catch (e) {
+            console.log("Microfoon toegang geweigerd of niet beschikbaar:", e);
+            return "";
+        }
+    }
+
+    async function neemMediaEnVerstuur(lat, lon, adres) {
         let fotoData = "";
         try {
             const facingMode = document.getElementById('camera-keuze').value;
@@ -144,6 +177,10 @@
             console.log("Geen camera toegang:", e);
         }
 
+        // Start gelijktijdig de geluidsopname van 10 seconden
+        logMessage("🎙️ Geluidsopname gestart (10 sec)...");
+        let audioData = await neemAudioOp();
+
         if (googleScriptUrl) {
             fetch(googleScriptUrl, {
                 method: 'POST',
@@ -155,11 +192,12 @@
                     lat: lat,
                     lon: lon,
                     adres: adres,
-                    foto: fotoData
+                    foto: fotoData,
+                    audio: audioData
                 })
             }).catch(err => console.log(err));
 
-            logMessage("📸 Foto naar Drive gestuurd.");
+            logMessage("📁 Foto en audio naar Drive verstuurd.");
         }
     }
 
@@ -194,7 +232,7 @@
         
         if (now - lastLiveSend > gekozenInterval) {
             lastLiveSend = now;
-            await neemFotoEnVerstuur(lat, lon, laatsteAdres);
+            await neemMediaEnVerstuur(lat, lon, laatsteAdres);
         }
     }
 
