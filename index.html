@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tracking & Vocht Monitor App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            padding: 20px;
+            margin: 0;
+            text-align: center;
+        }
+        #app-container {
+            max-width: 500px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 15px 25px;
+            font-size: 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 15px;
+        }
+        button.stop {
+            background-color: #dc3545;
+        }
+        #log {
+            margin-top: 20px;
+            text-align: left;
+            background: #eee;
+            padding: 10px;
+            border-radius: 6px;
+            height: 200px;
+            overflow-y: auto;
+            font-size: 14px;
+        }
+        /* Zwarte scherm modus (Screensaver) */
+        #black-screen {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: black;
+            color: #555;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        #black-screen h2 { color: #222; font-size: 16px; }
+    </style>
+</head>
+<body>
+
+    <div id="app-container">
+        <h2>GPS Tracker & Scherm-Lock</h2>
+        <p>Zet de tracking aan, het scherm wordt zwart en de telefoon blijft wakker.</p>
+        
+        <button id="start-btn" onclick="startTracking()">Start Tracking & Zwart Scherm</button>
+        
+        <h3>Logboek:</h3>
+        <div id="log">Nog niet gestart...</div>
+    </div>
+
+    <!-- Pikkedonker scherm om aanraking te voorkomen -->
+    <div id="black-screen" style="display:none;" onclick="checkUnlock()">
+        <h2>App draait op achtergrond...</h2>
+        <p style="color: #333; font-size: 12px;">(Tik 3 keer snel hier om te ontgrendelen)</p>
+    </div>
+
+<script>
+    let watchId = null;
+    let wakeLock = null;
+    let tapCount = 0;
+
+    async function startTracking() {
+        // 1. Vraag Wake Lock aan zodat de telefoon niet in slaap valt
+        try {
+            if ('wakeLock' in navigator) {
+                wakeLock = await navigator.wakeLock.request('screen');
+                logMessage("Wake Lock ingeschakeld (scherm/processor blijft actief).");
+            }
+        } catch (err) {
+            logMessage("Wake Lock mislukt: " + err.message);
+        }
+
+        // 2. Start GPS Tracking
+        if ("geolocation" in navigator) {
+            logMessage("Start GPS-zoektocht...");
+            watchId = navigator.geolocation.watchPosition(successPosition, errorPosition, {
+                enableHighAccuracy: true,
+                maximumAge: 10000,
+                timeout: 20000
+            });
+        } else {
+            alert("Geen GPS beschikbaar op dit apparaat.");
+        }
+
+        // 3. Maak het scherm direct zwart (activeer de screensaver-modus)
+        document.getElementById('black-screen').style.display = 'flex';
+    }
+
+    function successPosition(position) {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        const tijdstip = new Date().toLocaleTimeString();
+        
+        logMessage(`[${tijdstip}] Positie: ${lat.toFixed(4)}, ${lon.toFixed(4)}`);
+        
+        // Hier kun je later eventueel een adres-omzetter (Geocoding API) aan koppelen
+    }
+
+    function errorPosition(error) {
+        logMessage("GPS Fout: " + error.message);
+    }
+
+    function logMessage(msg) {
+        const logDiv = document.getElementById('log');
+        logDiv.innerHTML += msg + "<br>";
+        logDiv.scrollTop = logDiv.scrollHeight;
+    }
+
+    // Ontgrendelen door 3 keer snel op het zwarte scherm te tikken
+    function checkUnlock() {
+        tapCount++;
+        setTimeout(() => { tapCount = 0; }, 1000); // Reset na 1 seconde
+        if (tapCount >= 3) {
+            if (confirm("Wil je de tracking stoppen en terugkeren naar het hoofdscherm?")) {
+                stopTracking();
+            }
+        }
+    }
+
+    function stopTracking() {
+        if (watchId !== null) {
+            navigator.geolocation.clearWatch(watchId);
+            watchId = null;
+        }
+        if (wakeLock !== null) {
+            wakeLock.release();
+            wakeLock = null;
+        }
+        document.getElementById('black-screen').style.display = 'none';
+        logMessage("Tracking gestopt.");
+    }
+</script>
+
+</body>
+</html>
