@@ -80,9 +80,14 @@
     let watchId = null;
     let wakeLock = null;
     let tapCount = 0;
+    let lastLogTime = 0;
     
-    // Jouw ingevoerde Google Apps Script URL
+    // Jouw Google Apps Script URL
     const googleScriptUrl = "https://script.google.com/macros/s/AKfycbz6Zd0ChMLyO-qp6pRZx86yuGNlgzTHcNr6cMo_B9L8M_C7l0FbNw43PQSz1tK9gl_rAg/exec"; 
+
+    // HIER KUN JE DE TIJD AANPASSEN (in milliseconden)
+    // 10000 = 10 seconden | 30000 = 30 seconden | 60000 = 1 minuut
+    const intervalTijdMS = 10000; 
 
     async function startTracking() {
         try {
@@ -95,7 +100,7 @@
         }
 
         if ("geolocation" in navigator) {
-            logMessage("Start GPS-zoektocht...");
+            logMessage("Start GPS-zoektocht (Interval: " + (intervalTijdMS / 1000) + " sec)...");
             watchId = navigator.geolocation.watchPosition(successPosition, errorPosition, {
                 enableHighAccuracy: true,
                 maximumAge: 10000,
@@ -109,6 +114,14 @@
     }
 
     async function successPosition(position) {
+        const now = new Date().getTime();
+
+        // Controleer of er genoeg tijd verstreken is sinds de vorige meting
+        if (now - lastLogTime < intervalTijdMS) {
+            return; // Sla deze meting over
+        }
+        lastLogTime = now;
+
         const lat = position.coords.latitude;
         const lon = position.coords.longitude;
         const tijdstip = new Date().toLocaleTimeString();
